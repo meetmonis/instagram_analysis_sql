@@ -1,0 +1,163 @@
+/* 1.  How many unique post types are found in the 'fact_content' table?  */
+
+select 
+	distinct(post_type) as unique_post_type
+from gdb0120.fact_content;
+
+
+/* 2. What are the highest and lowest recorded impressions for each post type? */
+
+select 
+	post_type,
+    max(impressions) as highest_impressions,
+    min(impressions) as lowest_impressions
+from gdb0120.fact_content
+group by post_type;
+
+/* 3. Filter all the posts that were published on a weekend in the month of March and April and export them to a separate csv file. */
+
+select 
+	fc.*
+from gdb0120.fact_content fc 
+join gdb0120.dim_dates dd on fc.date = dd.date
+where dd.month_name in ('March','April')
+and dd.weekday_or_weekend = 'Weekend';
+
+/* 4. Create a report to get the statistics for the account. The final output
+includes the following fields:
+• month_name
+• total_profile_visits
+• total_new_followers */
+
+select 
+	dd.month_name as month_name,
+    sum(fa.profile_visits) as total_profile_visits,
+    sum(fa.new_followers) as total_new_followers
+from gdb0120.fact_account fa
+join gdb0120.dim_dates dd on fa.date = dd.date
+group by dd.month_name
+order by dd.month_name;
+
+/* 5. Write a CTE that calculates the total number of 'likes’ for each
+'post_category' during the month of 'July' and subsequently, arrange the
+'post_category' values in descending order according to their total likes. */
+
+with july_likes as (
+select
+	post_category,
+    sum(likes) as total_likes
+from gdb0120.fact_content fc
+join gdb0120.dim_dates dd on fc.date = dd.date
+where dd.month_name = 'July'
+group by fc.post_category
+)
+select 	
+	*
+from july_likes
+order by total_likes desc;
+
+/* . Create a report that displays the unique post_category names alongside
+their respective counts for each month. The output should have three
+columns:
+• month_name
+• post_category_names
+• post_category_count
+Example:
+• 'April', 'Earphone,Laptop,Mobile,Other Gadgets,Smartwatch', '5'
+• 'February', 'Earphone,Laptop,Mobile,Smartwatch', '4 */
+
+SELECT 
+    dd.month_name,
+    GROUP_CONCAT(DISTINCT fc.post_category ORDER BY fc.post_category SEPARATOR ',') AS post_category_names,
+    COUNT(DISTINCT fc.post_category) AS post_category_count
+FROM gdb0120.fact_content fc
+JOIN gdb0120.dim_dates dd 
+    ON fc.date = dd.date
+where dd.month_name in ('April','February')
+GROUP BY dd.month_name
+ORDER BY 
+    STR_TO_DATE(dd.month_name, '%M');
+    
+/* 7. What is the percentage breakdown of total reach by post type? The final
+output includes the following fields:
+• post_type
+• total_reach
+• reach_percentage */
+
+WITH reach_total AS (
+    SELECT SUM(reach) AS total_reach_all FROM gdb0120.fact_content
+)
+SELECT 
+    post_type,
+    SUM(reach) AS total_reach,
+    concat(ROUND(SUM(reach) * 100.0 / (SELECT total_reach_all FROM reach_total), 2),"%") AS reach_percentage
+FROM gdb0120.fact_content
+GROUP BY post_type;
+
+/* 8. Create a report that includes the quarter, total comments, and total
+saves recorded for each post category. Assign the following quarter
+groupings:
+(January, February, March) → “Q1”
+(April, May, June) → “Q2”
+(July, August, September) → “Q3”
+The final output columns should consist of:
+• post_category
+• quarter
+• total_comments
+• total_saves 
+*/
+
+SELECT 
+    fc.post_category,
+    CASE 
+        WHEN dd.month_name IN ('January', 'February', 'March') THEN 'Q1'
+        WHEN dd.month_name IN ('April', 'May', 'June') THEN 'Q2'
+        WHEN dd.month_name IN ('July', 'August', 'September') THEN 'Q3'
+        WHEN dd.month_name IN ('October', 'November', 'December') THEN 'Q4'
+    END AS quarter,
+    SUM(fc.comments) AS total_comments,
+    SUM(fc.saves) AS total_saves
+FROM gdb0120.fact_content fc
+JOIN gdb0120.dim_dates dd ON fc.date = dd.date
+GROUP BY fc.post_category, quarter
+ORDER BY quarter, post_category;
+
+/* 9. List the top three dates in each month with the highest number of new
+followers. The final output should include the following columns:
+• month
+• date
+• new_followers */
+
+WITH ranked_followers AS (
+    SELECT 
+        dd.month_name,
+        fa.date,
+        fa.new_followers,
+        ROW_NUMBER() OVER (PARTITION BY dd.month_name ORDER BY fa.new_followers DESC) AS rnk
+    FROM gdb0120.fact_account fa
+    JOIN gdb0120.dim_dates dd ON fa.date = dd.date
+)
+SELECT 
+    month_name, 
+    date, 
+    new_followers
+FROM ranked_followers
+WHERE rnk <= 3;
+
+/* 10. Create a stored procedure that takes the 'Week_no' as input and
+generates a report displaying the total shares for each 'Post_type'. The
+output of the procedure should consist of two columns:
+• post_type
+• total_shares 
+*/
+
+ SELECT 
+        fc.post_type,
+        SUM(fc.shares) AS total_shares
+FROM gdb0120.fact_content fc
+JOIN gdb0120.dim_dates dd ON fc.date = dd.date
+WHERE dd.week_no = week_param
+GROUP BY fc.post_type;
+
+
+
